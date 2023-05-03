@@ -134,6 +134,7 @@ class CluStream(base.Clusterer):
         self.seed = seed
 
         self.kwargs = kwargs
+        self.train_inst = 0
 
         self.centers: typing.Dict[int, typing.DefaultDict] = {}
         self.micro_clusters: typing.Dict[int, CluStreamMicroCluster] = {}
@@ -194,17 +195,13 @@ class CluStream(base.Clusterer):
                 closest_dist = distance
                 closest_idx = mc_idx
         return closest_idx, closest_dist
-    
-    def get_micro_clusters(self):
-        self._mc_centers = {i: mc.center for i, mc in self.micro_clusters.items()}
-        return self._mc_centers
 
     @staticmethod
     def _distance(point_a, point_b):
         return utils.math.minkowski_distance(point_a, point_b, 2)
 
     def learn_one(self, x, w=1.0):
-
+        self.train_inst += 1
         self._timestamp += 1
 
         if not self._initialized:
@@ -248,18 +245,25 @@ class CluStream(base.Clusterer):
         self._maintain_micro_clusters(x=x, w=w)
 
         # Apply incremental K-Means on micro-clusters after each time_gap
-        if self._timestamp % self.time_gap == self.time_gap - 1:
-            # Micro-cluster centers will only be saved when the calculation of macro-cluster centers
+        #self._timestamp % self.time_gap == self.time_gap - 1
+        return self
+    
+    def get_micro_clusters(self):
+        self._mc_centers = {i: mc.center for i, mc in self.micro_clusters.items()}
+        return self._mc_centers
+    
+    def offline_cluster(self):
+          # Micro-cluster centers will only be saved when the calculation of macro-cluster centers
             # is required, in order not to take up memory and time unnecessarily
-            self._mc_centers = {i: mc.center for i, mc in self.micro_clusters.items()}
+        self._mc_centers = {i: mc.center for i, mc in self.micro_clusters.items()}
 
-            self._kmeans_mc = cluster.KMeans(
-                n_clusters=self.n_macro_clusters, seed=self.seed, **self.kwargs
-            )
-            for center in self._mc_centers.values():
-                self._kmeans_mc = self._kmeans_mc.learn_one(center)
+        self._kmeans_mc = cluster.KMeans(
+             n_clusters=self.n_macro_clusters, seed=self.seed, **self.kwargs
+        )
+        for center in self._mc_centers.values():
+            self._kmeans_mc = self._kmeans_mc.learn_one(center)
 
-            self.centers = self._kmeans_mc.centers
+        self.centers = self._kmeans_mc.centers
 
         return self
 
