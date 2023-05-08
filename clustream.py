@@ -194,14 +194,14 @@ class CluStream(base.Clusterer):
                 closest_dist = distance
                 closest_idx = mc_idx
         return closest_idx, closest_dist
-    
-    def get_micro_clusters(self):
-        self._mc_centers = {i: mc.center for i, mc in self.micro_clusters.items()}
-        return self._mc_centers
 
     @staticmethod
     def _distance(point_a, point_b):
         return utils.math.minkowski_distance(point_a, point_b, 2)
+    
+    def get_micro_clusters(self):
+        self._mc_centers = {i: mc.center for i, mc in self.micro_clusters.items()}
+        return self._mc_centers
 
     def learn_one(self, x, w=1.0):
 
@@ -241,6 +241,8 @@ class CluStream(base.Clusterer):
         if closest_dist < radius:
             closest_mc.insert(x, w, self._timestamp)
             return self
+        else :
+            print(f"doesn't fit {self._timestamp}")
 
         # If the new point does not fit in the micro-cluster, micro-clusters
         # whose relevance stamps are less than the threshold are deleted.
