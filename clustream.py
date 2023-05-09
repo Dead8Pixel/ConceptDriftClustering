@@ -202,6 +202,17 @@ class CluStream(base.Clusterer):
     def get_micro_clusters(self):
         self._mc_centers = {i: mc.center for i, mc in self.micro_clusters.items()}
         return self._mc_centers
+    
+    def get_clusters(self):
+        self._kmeans_mc = cluster.KMeans(
+            n_clusters=self.n_macro_clusters, seed=self.seed, **self.kwargs
+        )
+        for center in self._mc_centers.values():
+            self._kmeans_mc = self._kmeans_mc.learn_one(center)
+
+        self.centers = self._kmeans_mc.centers
+        
+        return self.centers
 
     def learn_one(self, x, w=1.0):
 
@@ -241,9 +252,7 @@ class CluStream(base.Clusterer):
         if closest_dist < radius:
             closest_mc.insert(x, w, self._timestamp)
             return self
-        else :
-            print(f"doesn't fit {self._timestamp}")
-
+        
         # If the new point does not fit in the micro-cluster, micro-clusters
         # whose relevance stamps are less than the threshold are deleted.
         # Otherwise, closest micro-clusters are merged with each other.
