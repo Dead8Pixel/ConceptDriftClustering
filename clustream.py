@@ -3,6 +3,9 @@ import typing
 from collections import defaultdict
 
 from river import base, cluster, stats, utils
+from river.utils import dict2numpy
+import numpy as np
+from sklearn import cluster as skcluster
 
 
 class CluStream(base.Clusterer):
@@ -132,6 +135,7 @@ class CluStream(base.Clusterer):
         self.time_window = time_window
         self.time_gap = time_gap
         self.seed = seed
+        self.offline_model = None
 
         self.kwargs = kwargs
 
@@ -201,18 +205,29 @@ class CluStream(base.Clusterer):
     
     def get_micro_clusters(self):
         self._mc_centers = {i: mc.center for i, mc in self.micro_clusters.items()}
-        return self._mc_centers
+        return np.array([dict2numpy(x) for x in dict2numpy(self._mc_centers)])
     
-    def get_clusters(self):
-        self._kmeans_mc = cluster.KMeans(
-            n_clusters=self.n_macro_clusters, seed=self.seed, **self.kwargs
-        )
-        for center in self._mc_centers.values():
-            self._kmeans_mc = self._kmeans_mc.learn_one(center)
+    
+    def offline_cluster(self):
+        if self._initialized : 
+            mc_centers = self.get_micro_clusters()
+            self.offline_model = skcluster.KMeans(n_clusters=self.n_macro_clusters,n_init=10)
+            self.offline_model.fit(mc_centers)
+            self.centers = self.offline_model.cluster_centers_
+        return self
 
-        self.centers = self._kmeans_mc.centers
+
+    
+
+    def offline_predict(self,X):
+        if self.offline_model != None :
+            return self.offline_model.predict(X)
+        else :
+            return None
+
         
-        return self.centers
+
+
 
     def learn_one(self, x, w=1.0):
 
