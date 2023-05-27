@@ -3,10 +3,12 @@ import typing
 from collections import defaultdict
 
 from river import base, cluster, stats, utils
-from river.utils import dict2numpy , numpy2dict
+from river.utils import dict2numpy, numpy2dict
 import numpy as np
 from sklearn import cluster as skcluster
+from sklearn.metrics import silhouette_score
 from scipy.spatial import distance as scidist
+import math
 
 
 class CluStream(base.Clusterer):
@@ -120,14 +122,14 @@ class CluStream(base.Clusterer):
     """
 
     def __init__(
-        self,
-        n_macro_clusters: int = 5,
-        max_micro_clusters: int = 100,
-        micro_cluster_r_factor: int = 2,
-        time_window: int = 1000,
-        time_gap: int = 100,
-        seed: int = None,
-        **kwargs,
+            self,
+            n_macro_clusters: int = 5,
+            max_micro_clusters: int = 100,
+            micro_cluster_r_factor: int = 2,
+            time_window: int = 1000,
+            time_gap: int = 100,
+            seed: int = None,
+            **kwargs,
     ):
         super().__init__()
         self.n_macro_clusters = n_macro_clusters
@@ -203,35 +205,40 @@ class CluStream(base.Clusterer):
     @staticmethod
     def _distance(point_a, point_b):
         return utils.math.minkowski_distance(point_a, point_b, 2)
-    
+
     def get_micro_clusters(self):
         self._mc_centers = {i: mc.center for i, mc in self.micro_clusters.items()}
         return np.array([dict2numpy(x) for x in self._mc_centers.values()])
-    
-    
+
     def offline_cluster(self):
-        if self._initialized : 
+        # initial silhouette score
+        curr_ssc = 0.0
+        if self._initialized:
             mc_centers = self.get_micro_clusters()
-            self.offline_model = skcluster.KMeans(n_clusters=self.n_macro_clusters,n_init='auto')
-            self.offline_model = self.offline_model.fit(mc_centers)
-            self.centers = self.offline_model.cluster_centers_
+            # Calculer la silhoutte pour chaque nombre de clusters de 2 jusqu'a 2 * nb_mc_center
+            # et prendre la valeur qui a la meilleure silhoutte
+            for i in range(2, int(math.sqrt(len(mc_centers))) + 1):
+                model = skcluster.KMeans(n_clusters=i, n_init='auto').fit(mc_centers)
+                ssc = silhouette_score(mc_centers, model.predict(mc_centers))
+                if ssc > curr_ssc:
+                    self.offline_model = model
+                    curr_ssc = ssc
+                    self.centers = model.cluster_centers_
+
         return self
 
-
-    def offline_predict(self,X):
-        if self.offline_model != None :
+    def offline_predict(self, X):
+        if self.offline_model != None:
             return self.offline_model.predict(X)
-        else :
+        else:
             return None
 
-        
-    def dist_center(self,x):
-        pred = self.offline_predict(dict2numpy(x).reshape(1,-1))
-        if pred != None :
-            return scidist.euclidean(self.centers[pred][0],dict2numpy(x))
-        else :
-            return 0
-
+    def dist_center(self, x):
+        pred = self.offline_predict(dict2numpy(x).reshape(1, -1))
+        if pred != None:
+            return scidist.euclidean(self.centers[pred][0], dict2numpy(x))
+        else:
+            return 0.0
 
     def learn_one(self, x, w=1.0):
 
@@ -271,26 +278,15 @@ class CluStream(base.Clusterer):
         if closest_dist < radius:
             closest_mc.insert(x, w, self._timestamp)
             return self
-        
-        
+
         # If the new point does not fit in the micro-cluster, micro-clusters
         # whose relevance stamps are less than the threshold are deleted.
         # Otherwise, closest micro-clusters are merged with each other.
         self._maintain_micro_clusters(x=x, w=w)
 
         # # Apply incremental K-Means on micro-clusters after each time_gap
-        # if self._timestamp % self.time_gap == self.time_gap - 1:
-        #     # Micro-cluster centers will only be saved when the calculation of macro-cluster centers
-        #     # is required, in order not to take up memory and time unnecessarily
-        #     self._mc_centers = {i: mc.center for i, mc in self.micro_clusters.items()}
-
-        #     self._kmeans_mc = cluster.KMeans(
-        #         n_clusters=self.n_macro_clusters, seed=self.seed, **self.kwargs
-        #     )
-        #     for center in self._mc_centers.values():
-        #         self._kmeans_mc = self._kmeans_mc.learn_one(center)
-
-        #     self.centers = self._kmeans_mc.centers
+        # if self._timestamp % self.time_gap == self.time_gap - 1 and self._initialized:
+        #     self.offline_cluster()
 
         return self
 
@@ -307,10 +303,10 @@ class CluStreamMicroCluster(base.Base):
     """Micro-cluster class."""
 
     def __init__(
-        self,
-        x: dict = defaultdict(float),
-        w: float = None,
-        timestamp: int = None,
+            self,
+            x: dict = defaultdict(float),
+            w: float = None,
+            timestamp: int = None,
     ):
         # Initialize with sample x
         self.var_x = {k: stats.Var().update(x[k], w) for k in x}
