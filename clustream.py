@@ -218,7 +218,7 @@ class CluStream(base.Clusterer):
             # Calculer la silhoutte pour chaque nombre de clusters de 2 jusqu'a 2 * nb_mc_center
             # et prendre la valeur qui a la meilleure silhoutte
             for i in range(2, int(math.sqrt(len(mc_centers))) + 1):
-                model = skcluster.KMeans(n_clusters=i, n_init='auto').fit(mc_centers)
+                model = skcluster.KMeans(n_clusters=i, n_init='auto',init='k-means++',max_iter=500).fit(mc_centers)
                 ssc = silhouette_score(mc_centers, model.predict(mc_centers))
                 if ssc > curr_ssc:
                     self.offline_model = model
